@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:typed_data';
 
 extension UintExt on Uint8List {
@@ -9,6 +10,6 @@ extension UintExt on Uint8List {
     while (end < length && this[end] != 0) {
       end++;
     }
-    return String.fromCharCodes(sublist(offset, end));
+    return utf8.decode(sublist(offset, end));
   }
 }

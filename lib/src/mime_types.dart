@@ -61,6 +61,9 @@ class MagicMatchlet {
         }
         this.mask = mask;
       }
+    } else {
+      this.value = value;
+      this.mask = mask;
     }
   }
 }

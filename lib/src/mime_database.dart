@@ -59,9 +59,13 @@ class MimeDatabase {
 
     final aliasListOffset = byteReader.readUint32();
     final parentListOffset = byteReader.readUint32();
+    // ignore: unused_local_variable
     final literalListOffset = byteReader.readUint32();
+    // ignore: unused_local_variable
+    final reverseSuffixTreeOffset = byteReader.readUint32();
     final globListOffset = byteReader.readUint32();
     final magicListOffset = byteReader.readUint32();
+    // ignore: unused_local_variable
     final namespaceListOffset = byteReader.readUint32();
     final iconsListOffset = byteReader.readUint32();
     final genericIconsListOffset = byteReader.readUint32();
@@ -157,61 +161,68 @@ class MimeDatabase {
   }
 
   void _parseMagicList(Uint8List data, ByteReader byteReader, int offset) {
-    if (offset == 0 || offset >= data.length - 8) return;
+    if (offset == 0 || offset + 8 > data.length) return;
     byteReader.offset = offset;
-    print("OFFSET ${byteReader.offset}");
 
     final nMatches = byteReader.readUint32();
     print("nMatches $nMatches");
-
+    // ignore: unused_local_variable
     final maxExtent = byteReader.readUint32();
-    final _ = maxExtent;
     final firstMatchOffset = byteReader.readUint32();
     byteReader.offset = firstMatchOffset;
 
     for (int i = 0; i < nMatches && byteReader.offset + 16 < data.length; i++) {
       final priority = byteReader.readUint32();
-      print(priority);
       final mimeOffset = byteReader.readUint32();
       final nMatchlets = byteReader.readUint32();
       final firstMatchletOffset = byteReader.readUint32();
-      final mime = data.getNullTerminatedString(mimeOffset);
-      print(mime);
 
-      final matchlets = <MagicMatchlet>[];
-      final matchletByteReader = byteReader.clone(firstMatchletOffset);
-      for (var j = 0; j < nMatchlets && matchletByteReader.offset + 32 < data.length; j++) {
-        final rangeStart = matchletByteReader.readUint32();
-        final rangeLength = matchletByteReader.readUint32();
-        final wordSize = matchletByteReader.readUint32();
-        final valueLength = matchletByteReader.readUint32();
-        final valueOffset = matchletByteReader.readUint32();
-        final maskOffset = matchletByteReader.readUint32();
-        final nChildren = matchletByteReader.readUint32();
-        final firstChildOffset = matchletByteReader.readUint32();
-
-        final valueData = data.sublist(valueOffset, valueOffset + valueLength);
-        print("$maskOffset $valueLength");
-        final maskData = maskOffset > 0 && maskOffset < data.length
-            ? data.sublist(maskOffset, maskOffset + valueLength)
-            : null;
-
-        matchlets.add(
-          MagicMatchlet(
-            rangeStart: rangeStart,
-            rangeLength: rangeLength,
-            wordSize: wordSize,
-            value: valueData,
-            mask: maskData,
-            children: [],
-          ),
-        );
+      if (mimeOffset < 0 || mimeOffset >= data.length) {
+        continue;
       }
-
+      final mime = data.getNullTerminatedString(mimeOffset);
       if (mime.isNotEmpty) {
+        final matchlets = <MagicMatchlet>[];
+        final matchletByteReader = byteReader.clone(firstMatchletOffset);
+        for (var j = 0; j < nMatchlets && matchletByteReader.offset + 32 < data.length; j++) {
+          matchlets.add(_parseMagicMatchlet(data, matchletByteReader));
+        }
         _magicRules.add(MagicRule(priority, mime, matchlets));
       }
     }
+  }
+
+  MagicMatchlet _parseMagicMatchlet(Uint8List data, ByteReader byteReader) {
+    final rangeStart = byteReader.readUint32();
+    final rangeLength = byteReader.readUint32();
+    final wordSize = byteReader.readUint32();
+    final valueLength = byteReader.readUint32();
+    final valueOffset = byteReader.readUint32();
+    final maskOffset = byteReader.readUint32();
+    final nChildren = byteReader.readUint32();
+    final firstChildOffset = byteReader.readUint32();
+
+    final valueData = valueOffset >= 0 && valueOffset + valueLength <= data.length
+        ? data.sublist(valueOffset, valueOffset + valueLength)
+        : Uint8List(0);
+    final maskData = maskOffset > 0 && maskOffset + valueLength < data.length
+        ? data.sublist(maskOffset, maskOffset + valueLength)
+        : null;
+
+    final children = <MagicMatchlet>[];
+    final childrenByteReader = byteReader.clone(firstChildOffset);
+    for (int i = 0; i < nChildren; i++) {
+      children.add(_parseMagicMatchlet(data, childrenByteReader));
+    }
+
+    return MagicMatchlet(
+      rangeStart: rangeStart,
+      rangeLength: rangeLength,
+      wordSize: wordSize,
+      value: valueData,
+      mask: maskData,
+      children: children,
+    );
   }
 
   void _parseMimeTypes(Uint8List data) {
