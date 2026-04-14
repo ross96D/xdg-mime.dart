@@ -1,25 +1,87 @@
+import 'dart:typed_data';
 import 'package:mime_db/mime_db.dart';
 import 'package:test/test.dart';
 
-bool _globMatches(String pattern, String name, bool caseSensitive) {
-  if (pattern.startsWith('*.')) {
-    final ext = pattern.substring(2);
-    final testName = caseSensitive ? name : name.toLowerCase();
-    final testExt = caseSensitive ? ext : ext.toLowerCase();
-    return testName.endsWith(testExt);
-  } else if (pattern.startsWith('*')) {
-    final suffix = pattern.substring(1);
-    final testName = caseSensitive ? name : name.toLowerCase();
-    final testSuffix = caseSensitive ? suffix : suffix.toLowerCase();
-    return testName.contains(testSuffix);
-  } else {
-    final testName = caseSensitive ? name : name.toLowerCase();
-    final testPattern = caseSensitive ? pattern : pattern.toLowerCase();
-    return testName == testPattern;
-  }
-}
-
 void main() {
+  group('MagicMatchlet swap logic', () {
+    test('little endian wordSize=2 swaps bytes in each word', () {
+      final matchlet = MagicMatchlet(
+        rangeStart: 0,
+        rangeLength: 4,
+        value: Uint8List.fromList([0x01, 0x02, 0x03, 0x04]),
+        wordSize: 2,
+        host: Endian.little,
+      );
+      expect(matchlet.value, [0x02, 0x01, 0x04, 0x03]);
+    });
+
+    test('little endian wordSize=4 swaps bytes in each word', () {
+      final matchlet = MagicMatchlet(
+        rangeStart: 0,
+        rangeLength: 8,
+        value: Uint8List.fromList([
+          0x01,
+          0x02,
+          0x03,
+          0x04,
+          0x05,
+          0x06,
+          0x07,
+          0x08,
+        ]),
+        wordSize: 4,
+        host: Endian.little,
+      );
+      expect(matchlet.value, [0x04, 0x03, 0x02, 0x01, 0x08, 0x07, 0x06, 0x05]);
+    });
+
+    test('little endian partial last word is not swapped', () {
+      final matchlet = MagicMatchlet(
+        rangeStart: 0,
+        rangeLength: 5,
+        value: Uint8List.fromList([0x01, 0x02, 0x03, 0x04, 0x05]),
+        wordSize: 2,
+        host: Endian.little,
+      );
+      expect(matchlet.value, [0x02, 0x01, 0x04, 0x03, 0x05]);
+    });
+
+    test('big endian wordSize=2 does not swap', () {
+      final matchlet = MagicMatchlet(
+        rangeStart: 0,
+        rangeLength: 4,
+        value: Uint8List.fromList([0x01, 0x02, 0x03, 0x04]),
+        wordSize: 2,
+        host: Endian.big,
+      );
+      expect(matchlet.value, [0x01, 0x02, 0x03, 0x04]);
+    });
+
+    test('wordSize=1 does not swap', () {
+      final matchlet = MagicMatchlet(
+        rangeStart: 0,
+        rangeLength: 4,
+        value: Uint8List.fromList([0x01, 0x02, 0x03, 0x04]),
+        wordSize: 1,
+        host: Endian.little,
+      );
+      expect(matchlet.value, [0x01, 0x02, 0x03, 0x04]);
+    });
+
+    test('little endian swaps mask when same length as value', () {
+      final matchlet = MagicMatchlet(
+        rangeStart: 0,
+        rangeLength: 4,
+        value: Uint8List.fromList([0x01, 0x02, 0x03, 0x04]),
+        wordSize: 2,
+        mask: Uint8List.fromList([0xFF, 0xFF, 0xFF, 0xFF]),
+        host: Endian.little,
+      );
+      expect(matchlet.value, [0x02, 0x01, 0x04, 0x03]);
+      expect(matchlet.mask, [0xFF, 0xFF, 0xFF, 0xFF]);
+    });
+  });
+
   group('MimeDatabase', () {
     test('creates empty database', () {
       final db = MimeDatabase.empty();
@@ -27,26 +89,31 @@ void main() {
     });
 
     test('NOGLOBS handling removes patterns from lower priority databases', () {
-      final systemDb = MimeDatabase.empty();
-      systemDb.globs.add(GlobPattern('*.html', 'text/html', 80, false));
-      systemDb.globs.add(GlobPattern('*.htm', 'text/html', 80, false));
-      systemDb.globs.add(GlobPattern('*.png', 'image/png', 50, false));
+      final lowerDb = MimeDatabase.empty();
+      lowerDb.globs.add(GlobPattern('*.html', 'text/html', 80, false));
+      lowerDb.globs.add(GlobPattern('*.htm', 'text/html', 80, false));
+      lowerDb.globs.add(GlobPattern('*.png', 'image/png', 50, false));
 
-      final userDb = MimeDatabase.empty();
-      userDb.globs.add(GlobPattern('__NOGLOBS__', 'text/html', 0, false));
-      userDb.globs.add(
+      final higherDb = MimeDatabase.empty();
+      higherDb.globs.add(GlobPattern('__NOGLOBS__', 'text/html', 0, false));
+      higherDb.globs.add(
         GlobPattern('*.html', 'application/x-extension-html', 50, false),
       );
 
-      // Use SharedMimeInfo.open with mock databases - since mergeDatabases is private,
-      // we'll test the actual system behavior instead
-      print('Testing with SharedMimeInfo.open() which uses the merge logic');
-      print(
-        'systemDb globs: ${systemDb.globs.map((g) => '${g.pattern}->${g.mimeType}').join(', ')}',
+      final merged = SharedMimeInfo.mergeDatabases([lowerDb, higherDb]);
+      final htmlGlobs = merged.globs
+          .where((g) => g.mimeType == 'text/html')
+          .toList();
+      expect(htmlGlobs.length, 0);
+      expect(
+        merged.globs.any(
+          (g) =>
+              g.pattern == '*.html' &&
+              g.mimeType == 'application/x-extension-html',
+        ),
+        isTrue,
       );
-      print(
-        'userDb globs: ${userDb.globs.map((g) => '${g.pattern}->${g.mimeType}').join(', ')}',
-      );
+      expect(merged.globs.any((g) => g.pattern == '*.png'), isTrue);
     });
   });
 }

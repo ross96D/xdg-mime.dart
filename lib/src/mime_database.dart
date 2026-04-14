@@ -40,17 +40,11 @@ class MimeDatabase {
       final bytes = await file.readAsBytes();
       _parseCacheFile(bytes);
     }
-
-    final globs2File = path.join(_basePath, 'globs2');
-    if (await File(globs2File).exists()) {
-      await _parseGlobs2(globs2File);
-    }
   }
 
   void _parseCacheFile(Uint8List data) {
     if (data.length < 44) return;
 
-    // final byteData = ByteData.sublistView(data);
     final byteReader = ByteReader(ByteData.sublistView(data));
     final majorVersion = byteReader.readUint16();
     final minorVersion = byteReader.readUint16();
@@ -165,7 +159,6 @@ class MimeDatabase {
     byteReader.offset = offset;
 
     final nMatches = byteReader.readUint32();
-    print("nMatches $nMatches");
     // ignore: unused_local_variable
     final maxExtent = byteReader.readUint32();
     final firstMatchOffset = byteReader.readUint32();
@@ -247,39 +240,6 @@ class MimeDatabase {
   void _loadMimeTypeDir(String subdir, Uint8List data) {
     // Would need to read XML files from MEDIA/SUBTYPE.xml paths
     // For now this is a placeholder - the cache file has the key data
-  }
-
-  Future<void> _parseGlobs2(String filepath) async {
-    final file = File(filepath);
-    final lines = await file.readAsLines();
-
-    for (final line in lines) {
-      if (line.isEmpty || line.startsWith('#')) continue;
-
-      final colon1 = line.indexOf(':');
-      if (colon1 == -1) continue;
-      final colon2 = line.indexOf(':', colon1 + 1);
-      if (colon2 == -1) continue;
-
-      final weight = int.tryParse(line.substring(0, colon1)) ?? 50;
-      final mime = line.substring(colon1 + 1, colon2);
-      final rest = line.substring(colon2 + 1);
-      var pattern = rest;
-      var caseSensitive = false;
-
-      final colon3 = rest.indexOf(':');
-      if (colon3 != -1) {
-        pattern = rest.substring(0, colon3);
-        final flags = rest.substring(colon3 + 1).split(',');
-        caseSensitive = flags.contains('cs');
-      }
-
-      if (pattern != '__NOGLOBS__') {
-        _globs.add(GlobPattern(pattern, mime, weight, caseSensitive));
-      } else {
-        _globs.add(GlobPattern('__NOGLOBS__', mime, weight, caseSensitive));
-      }
-    }
   }
 
   String? getMimeType(String filename, {Uint8List? data}) {
@@ -467,6 +427,7 @@ class SharedMimeInfo {
         if (g.pattern == '__NOGLOBS__') {
           deletedGlobs[g.mimeType] ??= {};
           deletedGlobs[g.mimeType]!.add('__ALL__');
+          merged.globs.removeWhere((e) => e.mimeType == g.mimeType);
           continue;
         }
 
