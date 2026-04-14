@@ -9,9 +9,13 @@ import 'package:path/path.dart' as path;
 export 'mime_database.dart';
 
 abstract interface class _IMimeDatabase {
-  String? getMimeType(String filename, {Uint8List? data});
+  String? getMimeTypeFromFilename(String filename, {Uint8List? data});
 
-  String? lookup(String filename);
+  /// Returns the MIME type for [extension], which should be with the leading dot (e.g. ".txt", not "txt").
+  String? getMimeType(String extension, {Uint8List? data});
+
+  /// Returns the MIME type for [extension], which should be with the leading dot (e.g. ".txt", not "txt").
+  String? lookup(String extension);
 
   String? resolveAlias(String alias);
 
@@ -259,25 +263,10 @@ class MimeDatabase implements _IMimeDatabase {
   }
 
   @override
-  String? getMimeType(String filename, {Uint8List? data}) {
-    final name = path.basename(filename);
-    final ext = path.extension(filename).toLowerCase();
-    final basename = path.basenameWithoutExtension(filename);
-
-    final implicitExt = '.$ext'.substring(1);
-    if (implicitExt.isNotEmpty) {
-      final implicitMatch = _matchGlob('*$implicitExt');
-      if (implicitMatch != null) return implicitMatch;
-    }
-
-    final literalMatch = _matchGlob(name);
-    if (literalMatch != null) return literalMatch;
-
-    final longest = _findLongestGlobMatch(name);
-    if (longest != null) return longest;
-
-    final dirMatch = _matchGlob(basename);
-    if (dirMatch != null) return dirMatch;
+  String? getMimeType(String extension, {Uint8List? data}) {
+    assert(extension.isNotEmpty);
+    final match = _matchGlob('*$extension');
+    if (match != null) return match;
 
     if (data != null && data.isNotEmpty) {
       final magicMatch = _matchMagic(data);
@@ -290,8 +279,7 @@ class MimeDatabase implements _IMimeDatabase {
   String? _matchMagic(Uint8List data) {
     if (_magicRules.isEmpty) return null;
 
-    final sortedRules = List<MagicRule>.from(_magicRules)
-      ..sort((a, b) => b.priority.compareTo(a.priority));
+    final sortedRules = List<MagicRule>.from(_magicRules)..sort((a, b) => b.priority.compareTo(a.priority));
 
     for (final rule in sortedRules) {
       if (_matchMagicRule(rule, data)) {
@@ -324,7 +312,7 @@ class MimeDatabase implements _IMimeDatabase {
 
     final fileData = Uint8List.sublistView(data, start, start + actualLength);
 
-    if (matchlet.mask != null) {
+    if (matchlet.mask != null && fileData.length >= matchlet.rangeLength) {
       final mask = matchlet.mask!;
       for (var i = 0; i < matchlet.value.length; i++) {
         final maskedData = fileData[i] & mask[i];
@@ -340,7 +328,7 @@ class MimeDatabase implements _IMimeDatabase {
   }
 
   String? _matchGlob(String name) {
-    final matches = _globs.where((g) => _globMatches(g.pattern, name, g.caseSensitive)).toList();
+    final matches = _globs.where((g) => g.match(name)).toList();
     if (matches.isEmpty) return null;
 
     matches.sort((a, b) {
@@ -351,9 +339,7 @@ class MimeDatabase implements _IMimeDatabase {
 
     final best = matches.first;
     final othersSameMime = matches.where((m) => m.mimeType == best.mimeType).length;
-    final othersSameWeight = matches
-        .where((m) => m.weight == best.weight && m.mimeType != best.mimeType)
-        .length;
+    final othersSameWeight = matches.where((m) => m.weight == best.weight && m.mimeType != best.mimeType).length;
 
     if (othersSameMime == matches.length) {
       return best.mimeType;
@@ -364,39 +350,8 @@ class MimeDatabase implements _IMimeDatabase {
     return best.mimeType;
   }
 
-  String? _findLongestGlobMatch(String name) {
-    final matches = _globs.where((g) => _globMatches(g.pattern, name, g.caseSensitive)).toList();
-    if (matches.isEmpty) return null;
-
-    matches.sort((a, b) {
-      final weightCompare = b.weight.compareTo(a.weight);
-      if (weightCompare != 0) return weightCompare;
-      return b.pattern.length.compareTo(a.pattern.length);
-    });
-
-    return matches.first.mimeType;
-  }
-
-  bool _globMatches(String pattern, String name, bool caseSensitive) {
-    if (pattern.startsWith('*.')) {
-      final ext = pattern.substring(2);
-      final testName = caseSensitive ? name : name.toLowerCase();
-      final testExt = caseSensitive ? ext : ext.toLowerCase();
-      return testName.endsWith(testExt);
-    } else if (pattern.startsWith('*')) {
-      final suffix = pattern.substring(1);
-      final testName = caseSensitive ? name : name.toLowerCase();
-      final testSuffix = caseSensitive ? suffix : suffix.toLowerCase();
-      return testName.contains(testSuffix);
-    } else {
-      final testName = caseSensitive ? name : name.toLowerCase();
-      final testPattern = caseSensitive ? pattern : pattern.toLowerCase();
-      return testName == testPattern;
-    }
-  }
-
   @override
-  String? lookup(String filename) => getMimeType(filename);
+  String? lookup(String extension) => getMimeType(extension);
 
   @override
   String? resolveAlias(String alias) => _aliases[alias];
@@ -412,13 +367,17 @@ class MimeDatabase implements _IMimeDatabase {
 
   @override
   MimeTypeEntry? getMimeTypeInfo(String mimeType) => _types[mimeType];
+
+  @override
+  String? getMimeTypeFromFilename(String filename, {Uint8List? data}) {
+    return getMimeType(path.extension(filename), data: data);
+  }
 }
 
 class SharedMimeInfo {
   static Future<MimeDatabase> open() async {
     final dataHome =
-        Platform.environment['XDG_DATA_HOME'] ??
-        path.join(Platform.environment['HOME'] ?? '', '.local', 'share');
+        Platform.environment['XDG_DATA_HOME'] ?? path.join(Platform.environment['HOME'] ?? '', '.local', 'share');
     final dataDirs = (Platform.environment['XDG_DATA_DIRS'] ?? '/usr/share')
         .split(':')
         .where((d) => d.isNotEmpty)
@@ -457,9 +416,7 @@ class SharedMimeInfo {
         if (deletedGlobs[g.mimeType]?.contains('__ALL__') == true) continue;
         if (deletedGlobs[g.mimeType]?.contains(g.pattern) == true) continue;
 
-        final existing = merged.globs.indexWhere(
-          (e) => e.pattern == g.pattern && e.mimeType == g.mimeType,
-        );
+        final existing = merged.globs.indexWhere((e) => e.pattern == g.pattern && e.mimeType == g.mimeType);
         if (existing == -1) {
           merged.globs.add(g);
         }

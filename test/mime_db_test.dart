@@ -85,7 +85,7 @@ void main() {
   group('MimeDatabase', () {
     test('creates empty database', () {
       final db = MimeDatabase.empty();
-      expect(db.getMimeType('test.txt'), isNull);
+      expect(db.getMimeType('txt'), isNull);
     });
 
     test('NOGLOBS handling removes patterns from lower priority databases', () {

@@ -7,6 +7,25 @@ class GlobPattern {
   final bool caseSensitive;
 
   GlobPattern(this.pattern, this.mimeType, this.weight, this.caseSensitive);
+
+  bool match(String str) {
+    var testStr = str;
+    if (caseSensitive) {
+      testStr = str.toLowerCase();
+    }
+    if (pattern.startsWith('*.')) {
+      String ext = pattern.substring(2);
+      ext = caseSensitive ? ext : ext.toLowerCase();
+      return testStr.endsWith(ext);
+    } else if (pattern.startsWith('*')) {
+      String suffix = pattern.substring(1);
+      suffix = caseSensitive ? suffix : suffix.toLowerCase();
+      return testStr.contains(suffix);
+    } else {
+      final testPattern = caseSensitive ? pattern : pattern.toLowerCase();
+      return testStr == testPattern;
+    }
+  }
 }
 
 class MagicRule {
@@ -46,7 +65,6 @@ class MagicMatchlet {
           word[word.length - j - 1] = temp;
         }
       }
-      this.value = value;
 
       if (mask != null && mask.length == value.length) {
         for (int i = 0; i < mask.length; i += wordSize) {
@@ -59,12 +77,12 @@ class MagicMatchlet {
             word[word.length - j - 1] = temp;
           }
         }
-        this.mask = mask;
       }
-    } else {
-      this.value = value;
-      this.mask = mask;
     }
+    // ignore: prefer_initializing_formals
+    this.value = value;
+    // ignore: prefer_initializing_formals
+    this.mask = mask;
   }
 }
 
