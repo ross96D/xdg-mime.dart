@@ -8,7 +8,23 @@ import 'package:path/path.dart' as path;
 
 export 'mime_database.dart';
 
-class MimeDatabase {
+abstract interface class _IMimeDatabase {
+  String? getMimeType(String filename, {Uint8List? data});
+
+  String? lookup(String filename);
+
+  String? resolveAlias(String alias);
+
+  List<String> getSubclasses(String mimeType);
+
+  String? getIcon(String mimeType);
+
+  String? getGenericIcon(String mimeType);
+
+  MimeTypeEntry? getMimeTypeInfo(String mimeType);
+}
+
+class MimeDatabase implements _IMimeDatabase {
   final Map<String, MimeTypeEntry> _types = {};
   final Map<String, String> _aliases = {};
   final Map<String, List<String>> _subclasses = {};
@@ -242,6 +258,7 @@ class MimeDatabase {
     // For now this is a placeholder - the cache file has the key data
   }
 
+  @override
   String? getMimeType(String filename, {Uint8List? data}) {
     final name = path.basename(filename);
     final ext = path.extension(filename).toLowerCase();
@@ -378,16 +395,22 @@ class MimeDatabase {
     }
   }
 
+  @override
   String? lookup(String filename) => getMimeType(filename);
 
+  @override
   String? resolveAlias(String alias) => _aliases[alias];
 
+  @override
   List<String> getSubclasses(String mimeType) => _subclasses[mimeType] ?? [];
 
+  @override
   String? getIcon(String mimeType) => _icons[mimeType];
 
+  @override
   String? getGenericIcon(String mimeType) => _genericIcons[mimeType];
 
+  @override
   MimeTypeEntry? getMimeTypeInfo(String mimeType) => _types[mimeType];
 }
 
