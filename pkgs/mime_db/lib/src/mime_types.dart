@@ -1,31 +1,28 @@
 import 'dart:typed_data';
 
-class GlobPattern {
-  final String pattern;
-  final String mimeType;
+import 'package:glob/glob.dart';
+
+class MimeData {
+  final String mime;
   final int weight;
   final bool caseSensitive;
 
-  GlobPattern(this.pattern, this.mimeType, this.weight, this.caseSensitive);
+  const MimeData(this.mime, this.weight, this.caseSensitive);
 
-  bool match(String str) {
-    var testStr = str;
-    if (caseSensitive) {
-      testStr = str.toLowerCase();
-    }
-    if (pattern.startsWith('*.')) {
-      String ext = pattern.substring(2);
-      ext = caseSensitive ? ext : ext.toLowerCase();
-      return testStr.endsWith(ext);
-    } else if (pattern.startsWith('*')) {
-      String suffix = pattern.substring(1);
-      suffix = caseSensitive ? suffix : suffix.toLowerCase();
-      return testStr.contains(suffix);
-    } else {
-      final testPattern = caseSensitive ? pattern : pattern.toLowerCase();
-      return testStr == testPattern;
-    }
+  @override
+  bool operator ==(Object other) {
+    return other is MimeData && mime == other.mime && weight == other.weight && caseSensitive == other.caseSensitive;
   }
+
+  @override
+  int get hashCode => Object.hashAll([mime, weight, caseSensitive]);
+}
+
+class GlobPattern {
+  final Glob pattern;
+  final MimeData data;
+
+  GlobPattern(this.pattern, this.data);
 }
 
 class MagicRule {
@@ -86,20 +83,11 @@ class MagicMatchlet {
   }
 }
 
-class MimeTypeEntry {
-  final String type;
-  final String? comment;
+class MimeEntry {
+  final String mime;
   final String? icon;
   final String? genericIcon;
-  final List<String> aliases;
   final List<String> subclasses;
 
-  MimeTypeEntry({
-    required this.type,
-    this.comment,
-    this.icon,
-    this.genericIcon,
-    this.aliases = const [],
-    this.subclasses = const [],
-  });
+  const MimeEntry({required this.mime, this.icon, this.genericIcon, this.subclasses = const []});
 }

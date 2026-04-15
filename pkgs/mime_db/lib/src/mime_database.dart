@@ -1,51 +1,109 @@
 import 'dart:io';
 import 'dart:typed_data';
 
-import 'package:mime_db/src/byte_reader.dart';
-import 'package:mime_db/src/ext.dart';
-import 'package:mime_db/src/mime_types.dart';
+import 'package:glob/glob.dart';
+import 'byte_reader.dart';
+import 'ext.dart';
+import 'mime_types.dart';
+import 'reverse_trie.dart';
 import 'package:path/path.dart' as path;
+import 'package:xdg_dir/xdg.dart' as xdg_dir;
 
 export 'mime_database.dart';
 
-abstract interface class _IMimeDatabase {
-  String? getMimeTypeFromFilename(String filename, {Uint8List? data});
-
-  /// Returns the MIME type for [extension], which should be with the leading dot (e.g. ".txt", not "txt").
-  String? getMimeType(String extension, {Uint8List? data});
-
-  /// Returns the MIME type for [extension], which should be with the leading dot (e.g. ".txt", not "txt").
-  String? lookup(String extension);
-
-  String? resolveAlias(String alias);
-
-  List<String> getSubclasses(String mimeType);
-
-  String? getIcon(String mimeType);
-
-  String? getGenericIcon(String mimeType);
-
-  MimeTypeEntry? getMimeTypeInfo(String mimeType);
-}
-
-class MimeDatabase implements _IMimeDatabase {
-  final Map<String, MimeTypeEntry> _types = {};
+class MimeDatabase {
   final Map<String, String> _aliases = {};
   final Map<String, List<String>> _subclasses = {};
   final Map<String, String> _icons = {};
   final Map<String, String> _genericIcons = {};
-  final List<GlobPattern> _globs = [];
   final List<MagicRule> _magicRules = [];
-  final String? _basePath;
-
-  List<GlobPattern> get globs => _globs;
-  List<MagicRule> get magicRules => _magicRules;
+  final List<GlobPattern> _globs = [];
+  final Map<String, MimeData> _literals = {};
+  final List<ReverseTrie> _reverseSuffixTree = [];
+  final Directory? _basePath;
 
   MimeDatabase._([this._basePath]);
 
   MimeDatabase.empty() : _basePath = null;
 
-  static Future<MimeDatabase> fromDirectory(String dir) async {
+  String? getMimeType(String filename, {Uint8List? data}) {
+    // literals evaluation
+    {
+      MimeData? mimeData = _literals[filename];
+      if (mimeData != null) {
+        return mimeData.mime;
+      }
+      mimeData = _literals[filename.toLowerCase()];
+      if (mimeData != null && mimeData.caseSensitive == false) {
+        return mimeData.mime;
+      }
+    }
+
+    // suffix tree evaluation
+    {
+      for (final tree in _reverseSuffixTree) {
+        final mimeData = tree.match(filename);
+        if (mimeData != null) {
+          return mimeData.mime;
+        }
+      }
+    }
+
+    var matches = <MimeData>[];
+    // glob matching
+    {
+      for (final pattern in _globs) {
+        if (matches.isEmpty) {
+          if (pattern.pattern.matches(filename)) {
+            matches.add(pattern.data);
+          }
+        } else {
+          if (pattern.data.weight < matches[0].weight) {
+            continue;
+          }
+          if (pattern.pattern.matches(filename)) {
+            if (pattern.data.weight > matches[0].weight) {
+              matches = matches.sublist(0, 1);
+              matches[0] = pattern.data;
+            } else {
+              matches.add(pattern.data);
+            }
+          }
+        }
+      }
+    }
+
+    if (matches.isEmpty) {
+      // TODO 2: If no match can be made we need to check the N first bytes and see if they are UTF8
+      // visible characters or at least ASCII characters and return a text/plain, otherwise return a application/octet-stream
+      return data != null ? _matchMagic(data) : null;
+    }
+
+    if (matches.length == 1) {
+      return matches[0].mime;
+    }
+
+    final firstMatch = matches[0];
+    if (matches.every((e) => e.mime == firstMatch.mime)) {
+      return firstMatch.mime;
+    }
+
+    if (data != null) {
+      final magic = _matchMagic(data);
+      if (magic != null) {
+        for (final match in matches) {
+          if (match.mime == magic) {
+            return match.mime;
+          }
+        }
+        return magic;
+      }
+    }
+
+    return firstMatch.mime;
+  }
+
+  static Future<MimeDatabase> fromDirectory(Directory dir) async {
     final db = MimeDatabase._(dir);
     await db._load();
     return db;
@@ -54,7 +112,7 @@ class MimeDatabase implements _IMimeDatabase {
   Future<void> _load() async {
     if (_basePath == null) return;
 
-    final cacheFile = path.join(_basePath, 'mime.cache');
+    final cacheFile = path.join(_basePath.path, 'mime.cache');
     final file = File(cacheFile);
     if (await file.exists()) {
       final bytes = await file.readAsBytes();
@@ -73,7 +131,6 @@ class MimeDatabase implements _IMimeDatabase {
 
     final aliasListOffset = byteReader.readUint32();
     final parentListOffset = byteReader.readUint32();
-    // ignore: unused_local_variable
     final literalListOffset = byteReader.readUint32();
     // ignore: unused_local_variable
     final reverseSuffixTreeOffset = byteReader.readUint32();
@@ -84,11 +141,11 @@ class MimeDatabase implements _IMimeDatabase {
     final iconsListOffset = byteReader.readUint32();
     final genericIconsListOffset = byteReader.readUint32();
 
-    if (aliasListOffset > 0 && aliasListOffset < data.length - 4) {
+    if (aliasListOffset > 0) {
       byteReader.offset = aliasListOffset;
 
       final nAliases = byteReader.readUint32();
-      for (var i = 0; i < nAliases && byteReader.offset + 8 <= data.length; i++) {
+      for (int i = 0; i < nAliases && byteReader.offset + 8 <= data.length; i++) {
         final aliasOffset = byteReader.readUint32();
         final mimeOffset = byteReader.readUint32();
         final alias = data.getNullTerminatedString(aliasOffset);
@@ -97,11 +154,11 @@ class MimeDatabase implements _IMimeDatabase {
       }
     }
 
-    if (parentListOffset > 0 && parentListOffset < data.length - 4) {
+    if (parentListOffset > 0) {
       byteReader.offset = parentListOffset;
 
       final nEntries = byteReader.readUint32();
-      for (var i = 0; i < nEntries && byteReader.offset + 8 <= data.length; i++) {
+      for (int i = 0; i < nEntries && byteReader.offset + 8 <= data.length; i++) {
         final mimeOffset = byteReader.readUint32();
         final parentsOffset = byteReader.readUint32();
         final mime = data.getNullTerminatedString(mimeOffset);
@@ -116,34 +173,63 @@ class MimeDatabase implements _IMimeDatabase {
             final parent = data.getNullTerminatedString(parentOffset);
             parents.add(parent);
           }
-          if (mime.isNotEmpty) _subclasses[mime] = parents;
+
+          for (final parent in parents) {
+            if (!_subclasses.containsKey(parent)) {
+              _subclasses[parent] = [mime];
+            } else {
+              _subclasses[parent]!.add(mime);
+            }
+          }
         }
       }
     }
 
-    if (globListOffset > 0 && globListOffset < data.length - 4) {
+    if (literalListOffset > 0) {
+      byteReader.offset = literalListOffset;
+      final nLiterals = byteReader.readUint32();
+
+      for (int i = 0; i < nLiterals; i++) {
+        final literalOffset = byteReader.readUint32();
+        final mimeOffset = byteReader.readUint32();
+        final weightAndFlags = byteReader.readUint32();
+        final weight = weightAndFlags & 0xFF;
+        final caseSensitive = (weightAndFlags & 0x100) != 0;
+
+        final literal = data.getNullTerminatedString(literalOffset);
+        final mime = data.getNullTerminatedString(mimeOffset);
+
+        if (caseSensitive) {
+          _literals[literal] = MimeData(mime, weight, caseSensitive);
+        } else {
+          _literals[literal.toLowerCase()] = MimeData(mime, weight, caseSensitive);
+        }
+      }
+    }
+
+    if (globListOffset > 0) {
       byteReader.offset = globListOffset;
 
       final nGlobs = byteReader.readUint32();
-      for (var i = 0; i < nGlobs && byteReader.offset + 12 <= data.length; i++) {
+      for (int i = 0; i < nGlobs && byteReader.offset + 12 <= data.length; i++) {
         final globOffset = byteReader.readUint32();
         final mimeOffset = byteReader.readUint32();
         final weightAndFlags = byteReader.readUint32();
+        final weight = weightAndFlags & 0xFF;
+        final caseSensitive = (weightAndFlags & 0x100) != 0;
+
         final glob = data.getNullTerminatedString(globOffset);
         final mime = data.getNullTerminatedString(mimeOffset);
-        if (glob.isNotEmpty && mime.isNotEmpty) {
-          final weight = weightAndFlags & 0xFF;
-          final caseSensitive = (weightAndFlags & 0x100) != 0;
-          _globs.add(GlobPattern(glob, mime, weight, caseSensitive));
-        }
+
+        _globs.add(GlobPattern(Glob(glob, caseSensitive: caseSensitive), MimeData(mime, weight, caseSensitive)));
       }
     }
 
-    if (iconsListOffset > 0 && iconsListOffset < data.length - 4) {
+    if (iconsListOffset > 0) {
       byteReader.offset = iconsListOffset;
 
       final nIcons = byteReader.readUint32();
-      for (var i = 0; i < nIcons && byteReader.offset + 8 <= data.length; i++) {
+      for (int i = 0; i < nIcons && byteReader.offset + 8 <= data.length; i++) {
         final mimeOffset = byteReader.readUint32();
         final iconOffset = byteReader.readUint32();
         final mime = data.getNullTerminatedString(mimeOffset);
@@ -154,11 +240,11 @@ class MimeDatabase implements _IMimeDatabase {
       }
     }
 
-    if (genericIconsListOffset > 0 && genericIconsListOffset < data.length - 4) {
+    if (genericIconsListOffset > 0) {
       byteReader.offset = genericIconsListOffset;
 
       final nIcons = byteReader.readUint32();
-      for (var i = 0; i < nIcons && byteReader.offset + 8 <= data.length; i++) {
+      for (int i = 0; i < nIcons && byteReader.offset + 8 <= data.length; i++) {
         final mimeOffset = byteReader.readUint32();
         final iconOffset = byteReader.readUint32();
         final mime = data.getNullTerminatedString(mimeOffset);
@@ -169,13 +255,57 @@ class MimeDatabase implements _IMimeDatabase {
       }
     }
 
-    _parseMagicList(data, byteReader, magicListOffset);
+    _parseSuffixTree(data, byteReader, reverseSuffixTreeOffset);
 
-    _parseMimeTypes(data);
+    _parseMagicList(data, byteReader, magicListOffset);
+  }
+
+  void _parseSuffixTree(Uint8List data, ByteReader byteReader, int offset) {
+    if (offset == 0) return;
+    byteReader.offset = offset;
+
+    final nRoots = byteReader.readUint32();
+    final firstRootOffset = byteReader.readUint32();
+    byteReader.offset = firstRootOffset;
+
+    for (int i = 0; i < nRoots; i++) {
+      final root = _parseNode(data, byteReader);
+      _reverseSuffixTree.add(ReverseTrie(root));
+    }
+  }
+
+  ReverseTrieNode _parseNode(Uint8List data, ByteReader byteReader) {
+    final char = byteReader.readUint32();
+    if (char == 0) {
+      return _parseLeaf(data, byteReader);
+    } else {
+      final nChildren = byteReader.readUint32();
+      final firstChildrenOffset = byteReader.readUint32();
+
+      final node = ReverseTrieInnerNode(char, []);
+      final childrenByteReader = byteReader.clone(firstChildrenOffset);
+      for (int i = 0; i < nChildren; i++) {
+        final child = _parseNode(data, childrenByteReader);
+        node.children.add(child);
+      }
+      return node;
+    }
+  }
+
+  ReverseTrieLeaf _parseLeaf(Uint8List data, ByteReader byteReader) {
+    final mimeOffset = byteReader.readUint32();
+    final weightAndFlags = byteReader.readUint32();
+
+    final weight = weightAndFlags & 0xFF;
+    final caseSensitive = (weightAndFlags & 0x100) != 0;
+
+    final mime = data.getNullTerminatedString(mimeOffset);
+
+    return ReverseTrieLeaf(MimeData(mime, weight, caseSensitive));
   }
 
   void _parseMagicList(Uint8List data, ByteReader byteReader, int offset) {
-    if (offset == 0 || offset + 8 > data.length) return;
+    if (offset == 0) return;
     byteReader.offset = offset;
 
     final nMatches = byteReader.readUint32();
@@ -238,44 +368,6 @@ class MimeDatabase implements _IMimeDatabase {
     );
   }
 
-  void _parseMimeTypes(Uint8List data) {
-    final subdirs = [
-      'application',
-      'audio',
-      'image',
-      'inode',
-      'message',
-      'model',
-      'multipart',
-      'text',
-      'video',
-      'x-content',
-      'x-scheme-handler',
-    ];
-    for (final subdir in subdirs) {
-      _loadMimeTypeDir(subdir, data);
-    }
-  }
-
-  void _loadMimeTypeDir(String subdir, Uint8List data) {
-    // Would need to read XML files from MEDIA/SUBTYPE.xml paths
-    // For now this is a placeholder - the cache file has the key data
-  }
-
-  @override
-  String? getMimeType(String extension, {Uint8List? data}) {
-    assert(extension.isNotEmpty);
-    final match = _matchGlob('*$extension');
-    if (match != null) return match;
-
-    if (data != null && data.isNotEmpty) {
-      final magicMatch = _matchMagic(data);
-      if (magicMatch != null) return magicMatch;
-    }
-
-    return null;
-  }
-
   String? _matchMagic(Uint8List data) {
     if (_magicRules.isEmpty) return null;
 
@@ -314,81 +406,61 @@ class MimeDatabase implements _IMimeDatabase {
 
     if (matchlet.mask != null && fileData.length >= matchlet.rangeLength) {
       final mask = matchlet.mask!;
-      for (var i = 0; i < matchlet.value.length; i++) {
+      for (int i = 0; i < matchlet.value.length; i++) {
         final maskedData = fileData[i] & mask[i];
         if (maskedData != matchlet.value[i]) return false;
       }
     } else {
       if (fileData.length != matchlet.value.length) return false;
-      for (var i = 0; i < matchlet.value.length; i++) {
+      for (int i = 0; i < matchlet.value.length; i++) {
         if (fileData[i] != matchlet.value[i]) return false;
       }
     }
     return true;
   }
 
-  String? _matchGlob(String name) {
-    final matches = _globs.where((g) => g.match(name)).toList();
-    if (matches.isEmpty) return null;
-
-    matches.sort((a, b) {
-      final weightCompare = b.weight.compareTo(a.weight);
-      if (weightCompare != 0) return weightCompare;
-      return b.pattern.length.compareTo(a.pattern.length);
-    });
-
-    final best = matches.first;
-    final othersSameMime = matches.where((m) => m.mimeType == best.mimeType).length;
-    final othersSameWeight = matches.where((m) => m.weight == best.weight && m.mimeType != best.mimeType).length;
-
-    if (othersSameMime == matches.length) {
-      return best.mimeType;
+  String? resolveAlias(String alias) {
+    String? result;
+    while (true) {
+      final a = _aliases[alias];
+      if (a == null) {
+        return result;
+      }
+      alias = a;
+      if (a == result) {
+        return result;
+      }
+      result = a;
     }
-    if (othersSameMime > 1 || othersSameWeight > 0) {
-      return null;
-    }
-    return best.mimeType;
   }
 
-  @override
-  String? lookup(String extension) => getMimeType(extension);
+  List<String> getSubclasses(String parentMime) => _subclasses[parentMime] ?? [];
 
-  @override
-  String? resolveAlias(String alias) => _aliases[alias];
-
-  @override
-  List<String> getSubclasses(String mimeType) => _subclasses[mimeType] ?? [];
-
-  @override
   String? getIcon(String mimeType) => _icons[mimeType];
 
-  @override
   String? getGenericIcon(String mimeType) => _genericIcons[mimeType];
 
-  @override
-  MimeTypeEntry? getMimeTypeInfo(String mimeType) => _types[mimeType];
-
-  @override
-  String? getMimeTypeFromFilename(String filename, {Uint8List? data}) {
-    return getMimeType(path.extension(filename), data: data);
+  MimeEntry? getMimeEntry(String mime) {
+    return MimeEntry(
+      mime: mime,
+      subclasses: getSubclasses(mime),
+      icon: getIcon(mime),
+      genericIcon: getGenericIcon(mime),
+    );
   }
 }
 
 class SharedMimeInfo {
   static Future<MimeDatabase> open() async {
-    final dataHome =
-        Platform.environment['XDG_DATA_HOME'] ?? path.join(Platform.environment['HOME'] ?? '', '.local', 'share');
-    final dataDirs = (Platform.environment['XDG_DATA_DIRS'] ?? '/usr/share')
-        .split(':')
-        .where((d) => d.isNotEmpty)
-        .toList();
-
-    final paths = [dataHome, ...dataDirs].map((d) => path.join(d, 'mime')).toList();
+    final directories = [
+      ...xdg_dir.dataDirs.reversed,
+      xdg_dir.dataHome,
+    ].map((d) => Directory(path.join(d.path, 'mime')));
 
     final dbs = <MimeDatabase>[];
-    for (final p in paths) {
-      if (await Directory(p).exists()) {
-        final db = await MimeDatabase.fromDirectory(p);
+    for (final dir in directories) {
+      if (dir.existsSync()) {
+        final db = await MimeDatabase.fromDirectory(dir);
         dbs.add(db);
       }
     }
@@ -401,77 +473,18 @@ class SharedMimeInfo {
 
   static MimeDatabase _mergeDatabases(List<MimeDatabase> dbs) {
     final merged = MimeDatabase.empty();
-    final deletedGlobs = <String, Set<String>>{};
-    final deletedMagic = <String>{};
-
     for (final db in dbs) {
-      for (final g in db.globs) {
-        if (g.pattern == '__NOGLOBS__') {
-          deletedGlobs[g.mimeType] ??= {};
-          deletedGlobs[g.mimeType]!.add('__ALL__');
-          merged.globs.removeWhere((e) => e.mimeType == g.mimeType);
-          continue;
-        }
-
-        if (deletedGlobs[g.mimeType]?.contains('__ALL__') == true) continue;
-        if (deletedGlobs[g.mimeType]?.contains(g.pattern) == true) continue;
-
-        final existing = merged.globs.indexWhere((e) => e.pattern == g.pattern && e.mimeType == g.mimeType);
-        if (existing == -1) {
-          merged.globs.add(g);
-        }
-      }
-
-      for (final alias in db._aliases.entries) {
-        if (!merged._aliases.containsKey(alias.key)) {
-          merged._aliases[alias.key] = alias.value;
-        }
-      }
-
-      for (final entry in db._subclasses.entries) {
-        if (!merged._subclasses.containsKey(entry.key)) {
-          merged._subclasses[entry.key] = entry.value;
-        }
-      }
-
-      for (final icon in db._icons.entries) {
-        if (!merged._icons.containsKey(icon.key)) {
-          merged._icons[icon.key] = icon.value;
-        }
-      }
-
-      for (final icon in db._genericIcons.entries) {
-        if (!merged._genericIcons.containsKey(icon.key)) {
-          merged._genericIcons[icon.key] = icon.value;
-        }
-      }
-
-      for (final rule in db.magicRules) {
-        if (rule.matchlets.any((m) => _isNomagicMatchlet(m))) {
-          deletedMagic.add(rule.mimeType);
-        }
-      }
+      merged._globs.addAll(db._globs);
+      merged._subclasses.addAll(db._subclasses);
+      merged._aliases.addAll(db._aliases);
+      merged._icons.addAll(db._icons);
+      merged._genericIcons.addAll(db._genericIcons);
+      merged._magicRules.addAll(db._magicRules);
+      merged._reverseSuffixTree.addAll(db._reverseSuffixTree);
+      merged._literals.addAll(db._literals);
     }
-
-    if (deletedMagic.isNotEmpty) {
-      merged._magicRules.removeWhere((r) => deletedMagic.contains(r.mimeType));
-    }
-
-    merged.globs.sort((a, b) => b.weight.compareTo(a.weight));
-
     return merged;
   }
 
   static MimeDatabase mergeDatabases(List<MimeDatabase> dbs) => _mergeDatabases(dbs);
-
-  static bool _isNomagicMatchlet(MagicMatchlet m) {
-    final nomagic = [0x5F, 0x5F, 0x4E, 0x4F, 0x4D, 0x41, 0x47, 0x49, 0x43, 0x5F, 0x5F];
-    if (m.value.length == nomagic.length) {
-      for (var i = 0; i < nomagic.length; i++) {
-        if (m.value[i] != nomagic[i]) return false;
-      }
-      return true;
-    }
-    return false;
-  }
 }

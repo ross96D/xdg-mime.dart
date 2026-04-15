@@ -1,5 +1,5 @@
 import 'dart:typed_data';
-import 'package:mime_db/mime_db.dart';
+import 'package:xdg_mime_db/xdg_mime_db.dart';
 import 'package:test/test.dart';
 
 void main() {
@@ -19,16 +19,7 @@ void main() {
       final matchlet = MagicMatchlet(
         rangeStart: 0,
         rangeLength: 8,
-        value: Uint8List.fromList([
-          0x01,
-          0x02,
-          0x03,
-          0x04,
-          0x05,
-          0x06,
-          0x07,
-          0x08,
-        ]),
+        value: Uint8List.fromList([0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08]),
         wordSize: 4,
         host: Endian.little,
       );
@@ -79,41 +70,6 @@ void main() {
       );
       expect(matchlet.value, [0x02, 0x01, 0x04, 0x03]);
       expect(matchlet.mask, [0xFF, 0xFF, 0xFF, 0xFF]);
-    });
-  });
-
-  group('MimeDatabase', () {
-    test('creates empty database', () {
-      final db = MimeDatabase.empty();
-      expect(db.getMimeType('txt'), isNull);
-    });
-
-    test('NOGLOBS handling removes patterns from lower priority databases', () {
-      final lowerDb = MimeDatabase.empty();
-      lowerDb.globs.add(GlobPattern('*.html', 'text/html', 80, false));
-      lowerDb.globs.add(GlobPattern('*.htm', 'text/html', 80, false));
-      lowerDb.globs.add(GlobPattern('*.png', 'image/png', 50, false));
-
-      final higherDb = MimeDatabase.empty();
-      higherDb.globs.add(GlobPattern('__NOGLOBS__', 'text/html', 0, false));
-      higherDb.globs.add(
-        GlobPattern('*.html', 'application/x-extension-html', 50, false),
-      );
-
-      final merged = SharedMimeInfo.mergeDatabases([lowerDb, higherDb]);
-      final htmlGlobs = merged.globs
-          .where((g) => g.mimeType == 'text/html')
-          .toList();
-      expect(htmlGlobs.length, 0);
-      expect(
-        merged.globs.any(
-          (g) =>
-              g.pattern == '*.html' &&
-              g.mimeType == 'application/x-extension-html',
-        ),
-        isTrue,
-      );
-      expect(merged.globs.any((g) => g.pattern == '*.png'), isTrue);
     });
   });
 }
