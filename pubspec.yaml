@@ -8,3 +8,5 @@ environment:
 
 workspace:
   - pkgs/mime_db
+  - pkgs/mime_apps
+  - pkgs/freedesktop_file_parser
