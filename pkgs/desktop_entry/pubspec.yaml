@@ -1,4 +1,4 @@
-name: freedesktop_file_parser
+name: desktop_entry
 description: Implementation of the freedesktop.org association between MIME types and applications.
 version: 1.0.0
 publish_to: none
@@ -9,7 +9,15 @@ environment:
 resolution: workspace
 
 dependencies:
+  crypto: ^3.0.7
+  dartx: ^1.2.0
+  freedesktop_file_parser:
   result:
+  xdg_dir:
+    version: ^1.0.1
+    git:
+      url: https://github.com/ross96D/xdg_dir.dart
+      tag_pattern: "{{version}}"
 
 dev_dependencies:
   lints: ^6.0.0

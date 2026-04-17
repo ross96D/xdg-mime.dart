@@ -221,7 +221,12 @@ class MimeDatabase {
         final glob = data.getNullTerminatedString(globOffset);
         final mime = data.getNullTerminatedString(mimeOffset);
 
-        _globs.add(GlobPattern(Glob(glob, caseSensitive: caseSensitive), MimeData(mime, weight, caseSensitive)));
+        _globs.add(
+          GlobPattern(
+            Glob(glob, caseSensitive: caseSensitive),
+            MimeData(mime, weight, caseSensitive),
+          ),
+        );
       }
     }
 
@@ -371,7 +376,8 @@ class MimeDatabase {
   String? _matchMagic(Uint8List data) {
     if (_magicRules.isEmpty) return null;
 
-    final sortedRules = List<MagicRule>.from(_magicRules)..sort((a, b) => b.priority.compareTo(a.priority));
+    final sortedRules = List<MagicRule>.from(_magicRules)
+      ..sort((a, b) => b.priority.compareTo(a.priority));
 
     for (final rule in sortedRules) {
       if (_matchMagicRule(rule, data)) {

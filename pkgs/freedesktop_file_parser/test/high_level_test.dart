@@ -2,7 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
-import 'package:freedesktop_file_parser/high_level.dart';
+import 'package:freedesktop_file_parser/src/high_level.dart';
 import 'package:path/path.dart' as path;
 import 'package:test/test.dart';
 
@@ -31,6 +31,7 @@ void main() {
     expect(entry.data.length, equals(3));
     final desktopEntry = entry.section("Desktop Entry")!;
     expect(desktopEntry.attr("Name"), equals(["Firefox"]));
+    expect(desktopEntry.attr("GenericName"), equals(["Firefox"]));
     expect(desktopEntry.attrWithParam("GenericName", "ast"), equals(["Restolador Web"]));
     expect(desktopEntry.attrWithParam("GenericName", "ar"), equals(["متصفح ويب"]));
     expect(desktopEntry.attr("Exec"), equals(["/usr/lib/firefox/firefox %u"]));

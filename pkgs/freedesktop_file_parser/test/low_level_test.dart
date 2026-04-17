@@ -1,6 +1,7 @@
 import 'dart:convert';
-import 'package:freedesktop_file_parser/low_level.dart';
-import 'package:freedesktop_file_parser/src/util.dart';
+import 'package:freedesktop_file_parser/src/errors.dart';
+import 'package:freedesktop_file_parser/src/low_level.dart';
+import 'package:result/result.dart';
 import 'package:test/test.dart';
 
 void main() {
@@ -222,7 +223,9 @@ Restart=always
 [Install]
 WantedBy=multi-user.target
 ''');
-      final sections = parseEntry(input).whereType<ResultOk<SectionBytes, ParseError>>().map((r) => r.ok).toList();
+      final sections = parseEntry(
+        input,
+      ).whereType<ResultOk<SectionBytes, ParseError>>().map((r) => r.ok).toList();
       expect(sections.length, 3);
 
       final serviceSection = sections.firstWhere((s) => utf8.decode(s.title) == 'Service');

@@ -11,7 +11,10 @@ class MimeData {
 
   @override
   bool operator ==(Object other) {
-    return other is MimeData && mime == other.mime && weight == other.weight && caseSensitive == other.caseSensitive;
+    return other is MimeData &&
+        mime == other.mime &&
+        weight == other.weight &&
+        caseSensitive == other.caseSensitive;
   }
 
   @override

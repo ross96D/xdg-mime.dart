@@ -1,7 +1,7 @@
 import 'dart:typed_data';
 
-import 'package:freedesktop_file_parser/low_level.dart';
-import 'package:freedesktop_file_parser/src/util.dart';
+import 'low_level.dart';
+import 'package:result/result.dart';
 
 extension type Entry(Map<String, Section> data) {
   static Result<Entry, ParseError> parse(Uint8List input) {
@@ -12,7 +12,10 @@ extension type Entry(Map<String, Section> data) {
         case ResultErr<SectionStr, ParseError>(:final error):
           return Result.error(error);
         case ResultOk<SectionStr, ParseError>(ok: final section):
-          final attrMap = sectionsMap.putIfAbsent(section.title, () => Section(<AttrKey, List<String>>{}));
+          final attrMap = sectionsMap.putIfAbsent(
+            section.title,
+            () => Section(<AttrKey, List<String>>{}),
+          );
           for (final attr in section.attrs) {
             final key = switch (attr.param != null) {
               true => AttrKey(attr.param!.attrName, attr.param!.param),

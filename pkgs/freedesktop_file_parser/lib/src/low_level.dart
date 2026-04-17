@@ -1,9 +1,7 @@
 import 'dart:convert';
 import 'dart:typed_data';
-
-import 'package:freedesktop_file_parser/src/util.dart';
-
-enum ParseErrorKind { utf8Error, unexpectedToken, incompleteInput }
+import 'package:result/result.dart';
+import 'errors.dart';
 
 const _bracketOpen = 91; // [
 const _bracketClose = 93; // ]
@@ -15,29 +13,6 @@ const _equals = 61; // =
 const _hash = 35; // #
 const _dottedComma = 59; // ;
 const _whitespace = 32; //
-
-class ParseError {
-  final ParseErrorKind kind;
-  final Uint8List bytes;
-  final String message;
-
-  const ParseError._(this.kind, this.bytes, this.message);
-
-  factory ParseError.utf8(Uint8List bytes, String message) {
-    return ParseError._(ParseErrorKind.utf8Error, bytes, message);
-  }
-
-  factory ParseError.unexpected(String message, [Uint8List? bytes]) {
-    return ParseError._(ParseErrorKind.unexpectedToken, bytes ?? Uint8List(0), message);
-  }
-
-  factory ParseError.incomplete(String message, [Uint8List? bytes]) {
-    return ParseError._(ParseErrorKind.incompleteInput, bytes ?? Uint8List(0), message);
-  }
-
-  @override
-  String toString() => 'ParseError($kind: $message)';
-}
 
 class AttrBytes {
   final Uint8List name;
@@ -147,7 +122,10 @@ class ParamStr {
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-      other is ParamStr && runtimeType == other.runtimeType && param == other.param && attrName == other.attrName;
+      other is ParamStr &&
+          runtimeType == other.runtimeType &&
+          param == other.param &&
+          attrName == other.attrName;
 
   @override
   int get hashCode => Object.hash(param, attrName);
@@ -226,7 +204,10 @@ AttrStr _attrBytesToStr(AttrBytes attr) {
     final attrNameStr = _tryParseUtf8(attr.param!.attrName);
     final paramStr = _tryParseUtf8(attr.param!.param);
     if (attrNameStr == null || paramStr == null) {
-      throw ParseError.utf8(attrNameStr == null ? attr.param!.attrName : attr.param!.param, 'Invalid UTF-8 in param');
+      throw ParseError.utf8(
+        attrNameStr == null ? attr.param!.attrName : attr.param!.param,
+        'Invalid UTF-8 in param',
+      );
     }
     param = ParamStr(paramStr, attrNameStr);
   }
@@ -376,7 +357,11 @@ enum LineCont { end, cont }
     return (nextResult.$1, LineCont.cont, Uint8List.sublistView(input, 0, pos));
   }
 
-  return (Uint8List.sublistView(input, pos + 1), LineCont.end, Uint8List.sublistView(input, 0, pos));
+  return (
+    Uint8List.sublistView(input, pos + 1),
+    LineCont.end,
+    Uint8List.sublistView(input, 0, pos),
+  );
 }
 
 (Uint8List, Uint8List) parseValue(Uint8List input) {
@@ -483,7 +468,10 @@ class SectionBytesIter implements Iterator<Result<SectionBytes, ParseError>> {
     if (sectionResult == null) {
       _error = true;
       _current = Result<SectionBytes, ParseError>.error(
-        ParseError.unexpected('Failed to parse section', Uint8List.fromList(_rem.take(50).toList())),
+        ParseError.unexpected(
+          'Failed to parse section',
+          Uint8List.fromList(_rem.take(50).toList()),
+        ),
       );
       _hasCurrent = true;
       return true;

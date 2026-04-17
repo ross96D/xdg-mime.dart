@@ -1,0 +1,8 @@
+name: result
+description: Result type implementation
+version: 1.0.0
+
+environment:
+  sdk: ^3.10.0
+
+resolution: workspace

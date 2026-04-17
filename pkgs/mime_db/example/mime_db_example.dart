@@ -27,5 +27,7 @@ void main() async {
   print('\nIcons:');
   print('  inode/vnd.kde.kio.smb.printer icon -> ${db.getIcon('inode/vnd.kde.kio.smb.printer')}');
   print('  inode/fifo icon -> ${db.getGenericIcon('inode/fifo')}');
-  print('  application/x-magicpoint generic-icon -> ${db.getGenericIcon('application/x-magicpoint')}');
+  print(
+    '  application/x-magicpoint generic-icon -> ${db.getGenericIcon('application/x-magicpoint')}',
+  );
 }

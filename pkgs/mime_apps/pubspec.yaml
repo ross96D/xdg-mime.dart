@@ -10,12 +10,15 @@ resolution: workspace
 
 # Add regular dependencies here.
 dependencies:
+  result:
+  freedesktop_file_parser:
   path: ^1.9.0
   xdg_dir:
     version: ^1.0.1
     git:
       url: https://github.com/ross96D/xdg_dir.dart
       tag_pattern: "{{version}}"
+  dartx: ^1.2.0
 
 dev_dependencies:
   lints: ^6.0.0

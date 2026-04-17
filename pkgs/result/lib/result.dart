@@ -1,9 +1,10 @@
+library;
 
 sealed class Result<Ok, Err> {
   const Result();
 
   const factory Result.ok(Ok ok) = ResultOk;
-  const factory Result.error(Err ok) = ResultErr;
+  const factory Result.error(Err error) = ResultErr;
 
   Ok unwrap() {
     if (this is ResultOk<Ok, Err>) {
