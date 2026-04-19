@@ -467,7 +467,7 @@ class SectionBytesIter implements Iterator<Result<SectionBytes, ParseError>> {
     final sectionResult = parseSection(_rem);
     if (sectionResult == null) {
       _error = true;
-      _current = Result<SectionBytes, ParseError>.error(
+      _current = .error(
         ParseError.unexpected(
           'Failed to parse section',
           Uint8List.fromList(_rem.take(50).toList()),
@@ -521,16 +521,16 @@ class SectionStrIter implements Iterator<Result<SectionStr, ParseError>> {
         SectionStr? sectionStr;
         try {
           sectionStr = _sectionBytesToStr(ok);
-          _current = Result<SectionStr, ParseError>.ok(sectionStr);
+          _current = .ok(sectionStr);
         } catch (e) {
           if (e is ParseError) {
-            _current = Result<SectionStr, ParseError>.error(e);
+            _current = .error(e);
           } else {
-            _current = Result<SectionStr, ParseError>.error(ParseError.unexpected(e.toString()));
+            _current = .error(ParseError.unexpected(e.toString()));
           }
         }
       case ResultErr<SectionBytes, ParseError>(:final error):
-        _current = Result.error(error);
+        _current = .error(error);
     }
 
     _hasCurrent = true;
