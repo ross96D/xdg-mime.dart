@@ -22,7 +22,9 @@ void main() async {
   print('  audio/x-midi -> ${db.resolveAlias('audio/x-midi')}');
 
   print('\nSubclasses:');
-  print('  text/plain -> ${db.getSubclasses('text/plain')}');
+  print('  application/xml -> ${db.getChildren('application/xml')}');
+  print('\Parent classes:');
+  print('  application/xml -> ${db.getAncesters('application/xml')}');
 
   print('\nIcons:');
   print('  inode/vnd.kde.kio.smb.printer icon -> ${db.getIcon('inode/vnd.kde.kio.smb.printer')}');

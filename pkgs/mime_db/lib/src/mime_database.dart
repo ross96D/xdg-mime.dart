@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:glob/glob.dart';
 import 'byte_reader.dart';
 import 'ext.dart';
+import 'family_graph.dart';
 import 'mime_types.dart';
 import 'reverse_trie.dart';
 import 'package:path/path.dart' as path;
@@ -13,7 +14,7 @@ export 'mime_database.dart';
 
 class MimeDatabase {
   final Map<String, String> _aliases = {};
-  final Map<String, List<String>> _subclasses = {};
+  final MimeFamilyGraph _familyGraph = MimeFamilyGraph();
   final Map<String, String> _icons = {};
   final Map<String, String> _genericIcons = {};
   final List<MagicRule> _magicRules = [];
@@ -175,11 +176,7 @@ class MimeDatabase {
           }
 
           for (final parent in parents) {
-            if (!_subclasses.containsKey(parent)) {
-              _subclasses[parent] = [mime];
-            } else {
-              _subclasses[parent]!.add(mime);
-            }
+            _familyGraph.addParentChild(parent, mime);
           }
         }
       }
@@ -440,7 +437,12 @@ class MimeDatabase {
     }
   }
 
-  List<String> getSubclasses(String parentMime) => _subclasses[parentMime] ?? [];
+  List<String> getAncesters(String childMime) {
+    return _familyGraph.getAncestors(childMime);
+  }
+
+  List<String> getChildren(String parentMime) =>
+      _familyGraph.getDescendants(parentMime);
 
   String? getIcon(String mimeType) => _icons[mimeType];
 
@@ -449,7 +451,7 @@ class MimeDatabase {
   MimeEntry? getMimeEntry(String mime) {
     return MimeEntry(
       mime: mime,
-      subclasses: getSubclasses(mime),
+      subclasses: getChildren(mime),
       icon: getIcon(mime),
       genericIcon: getGenericIcon(mime),
     );
@@ -481,7 +483,7 @@ class SharedMimeInfo {
     final merged = MimeDatabase.empty();
     for (final db in dbs) {
       merged._globs.addAll(db._globs);
-      merged._subclasses.addAll(db._subclasses);
+      merged._familyGraph.merge(db._familyGraph);
       merged._aliases.addAll(db._aliases);
       merged._icons.addAll(db._icons);
       merged._genericIcons.addAll(db._genericIcons);
