@@ -62,7 +62,7 @@ void _parseMimeappList(File mimeFile, Mimelist list) {
 
   final addedSection = entry.section("Added Associations");
   final removedSection = entry.section("Removed Associations");
-  final defaultSection = entry.section(" Default Applications");
+  final defaultSection = entry.section("Default Applications");
 
   if (addedSection != null) {
     for (final entry in addedSection.attrs()) {
