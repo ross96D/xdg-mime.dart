@@ -19,16 +19,20 @@ class DesktopEntry {
 
   static Future<Result<DesktopEntry, ParseError>> fromFile(File desktop) async {
     final mtime = desktop.statSync().modified;
+    final path = desktop.absolute.path;
     final bytes = await desktop.readAsBytes();
 
     switch (Entry.parse(bytes)) {
       case ResultOk<Entry, ParseError>(ok: final entry):
         final mainSection = entry.section("Desktop Entry");
         if (mainSection == null) {
-          return Result.error(
-            ParseError.unexpected("Not a desktop file. Missing [Desktop Entry] section"),
-          );
+          return Result.error(.unexpected("Not a desktop file. Missing [Desktop Entry] section"));
         }
+        final error = Fields.verify(mainSection);
+        if (error != null) {
+          return Result.error(error);
+        }
+
         final mainFields = Fields._(mainSection);
         final actions = mainFields.actions;
         final actionsSections = <({String name, Fields fields})>[];
@@ -39,25 +43,53 @@ class DesktopEntry {
           }
           actionsSections.add((fields: Fields._(actionSection), name: action));
         }
-        return Result.ok(DesktopEntry._(.new(mtime, bytes), mainFields, actionsSections));
+        return Result.ok(DesktopEntry._(.new(path, mtime, bytes), mainFields, actionsSections));
       case ResultErr<Entry, ParseError>(:final error):
         return Result.error(error);
     }
   }
 }
 
+enum DesktopEntryType {
+  application,
+  link,
+  directory;
+
+  static DesktopEntryType? from(String type) {
+    return switch (type.toLowerCase()) {
+      "application" => .application,
+      "link" => .link,
+      "directory" => .directory,
+      _ => null,
+    };
+  }
+}
+
 class Fields {
   final Section _section;
 
-  Fields._(this._section);
+  static ParseError? verify(Section section) {
+    if (section.attr("Name").firstOrNull == null) {
+      return ParseError.missingRequiredField("Name");
+    }
+    final type = section.attr("Type").firstOrNull;
+    if (type == null) {
+      return ParseError.missingRequiredField("Type");
+    } else if (DesktopEntryType.from(type) == null) {
+      return ParseError.invalidFieldValue("Type", type);
+    }
+    return null;
+  }
+
+  Fields._(this._section) : assert(verify(_section) == null, "${verify(_section)?.toString()}");
 
   /// This specification defines 3 types of desktop entries: `Application` (type 1),
   /// `Link` (type 2) and `Directory` (type 3). To allow the addition of new types
   /// in the future, implementations should ignore desktop entries with an unknown type.
-  String? get type => _section.attr("Type").firstOrNull;
+  DesktopEntryType get type => DesktopEntryType.from(_section.attr("Type").first)!;
 
   /// Specific name of the application, for example "Mozilla".
-  String? get name => _section.attr("Name").firstOrNull;
+  String get name => _section.attr("Name").first;
 
   /// Specific name of the application, for example "Mozilla".
   String? nameLang(String lang) => _section.attrWithParam("Name", lang).firstOrNull;
@@ -184,10 +216,11 @@ extension on String {
 }
 
 class DesktopEntryCache {
+  final String path;
   final DateTime mtime;
   final Uint8List hashedContent;
 
-  DesktopEntryCache(this.mtime, Uint8List content) : hashedContent = _hash(content);
+  DesktopEntryCache(this.path, this.mtime, Uint8List content) : hashedContent = _hash(content);
 
   static Uint8List _hash(Uint8List input) {
     final digest = md5.convert(input);
@@ -197,6 +230,9 @@ class DesktopEntryCache {
   @override
   // ignore: hash_and_equals
   bool operator ==(covariant DesktopEntryCache other) {
+    if (path != other.path) {
+      return false;
+    }
     final mtimeDiff = mtime.difference(other.mtime).abs();
     if (mtimeDiff < Duration(milliseconds: 10)) {
       return true;

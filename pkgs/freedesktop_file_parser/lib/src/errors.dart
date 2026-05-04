@@ -1,6 +1,12 @@
 import 'dart:typed_data';
 
-enum ParseErrorKind { utf8Error, unexpectedToken, incompleteInput }
+enum ParseErrorKind {
+  utf8Error,
+  unexpectedToken,
+  incompleteInput,
+  missingRequiredField,
+  invalidFieldValue,
+}
 
 class ParseError {
   final ParseErrorKind kind;
@@ -19,6 +25,23 @@ class ParseError {
 
   factory ParseError.incomplete(String message, [Uint8List? bytes]) {
     return ParseError._(ParseErrorKind.incompleteInput, bytes ?? Uint8List(0), message);
+  }
+
+  factory ParseError.missingRequiredField(String field) {
+    return ParseError._(.missingRequiredField, Uint8List(0), "Missing required field $field");
+  }
+
+  factory ParseError.invalidFieldValue(
+    String field,
+    String value, [
+    List<String> expectedValues = const [],
+  ]) {
+    return ParseError._(
+      .missingRequiredField,
+      Uint8List(0),
+      "Field $field has an invalid value $value."
+      "${expectedValues.isNotEmpty ? ' Expected values are ${expectedValues.join(', ')}.' : ''}",
+    );
   }
 
   @override
