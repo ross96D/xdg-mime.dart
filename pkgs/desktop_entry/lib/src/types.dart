@@ -33,7 +33,7 @@ class DesktopEntry {
           return Result.error(error);
         }
 
-        final mainFields = Fields._(mainSection);
+        final mainFields = Fields._(mainSection, false);
         final actions = mainFields.actions;
         final actionsSections = <({String name, Fields fields})>[];
         for (final action in actions) {
@@ -41,7 +41,7 @@ class DesktopEntry {
           if (actionSection == null) {
             continue;
           }
-          actionsSections.add((fields: Fields._(actionSection), name: action));
+          actionsSections.add((fields: Fields._(actionSection, true), name: action));
         }
         return Result.ok(DesktopEntry._(.new(path, mtime, bytes), mainFields, actionsSections));
       case ResultErr<Entry, ParseError>(:final error):
@@ -81,7 +81,20 @@ class Fields {
     return null;
   }
 
-  Fields._(this._section) : assert(verify(_section) == null, "${verify(_section)?.toString()}");
+  static ParseError? verifyAction(Section section) {
+    if (section.attr("Name").firstOrNull == null) {
+      return ParseError.missingRequiredField("Name");
+    }
+    return null;
+  }
+
+  Fields._(this._section, bool isAction) {
+    assert(() {
+      final verifyResult = isAction ? verifyAction(_section) : verify(_section);
+      assert(verifyResult == null, verifyResult.toString());
+      return true;
+    }());
+  }
 
   /// This specification defines 3 types of desktop entries: `Application` (type 1),
   /// `Link` (type 2) and `Directory` (type 3). To allow the addition of new types
