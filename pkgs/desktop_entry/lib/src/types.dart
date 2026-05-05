@@ -4,8 +4,14 @@ import 'dart:typed_data';
 import 'package:freedesktop_file_parser/parser.dart';
 import 'package:result/result.dart';
 import 'package:crypto/crypto.dart' show md5;
+import 'package:path/path.dart' as p;
 
 class DesktopEntry {
+  /// Filename, used across the spec to refer to the desktop entry
+  String get filename =>  p.basename(cache.path);
+
+  String get path => cache.path;
+
   /// For caching the parsing
   final DesktopEntryCache cache;
 

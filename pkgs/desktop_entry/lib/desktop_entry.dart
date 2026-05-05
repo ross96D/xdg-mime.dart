@@ -20,7 +20,7 @@ class DesktopEntryManager {
   ].map((e) => e.directory("applications")).toList();
 
   static int _compare(DesktopEntry a, DesktopEntry b) {
-    return a.fields.name.compareTo(b.fields.name);
+    return a.filename.compareTo(b.filename);
   }
 
   DesktopEntryManager._(this._sortedDesktopEntries);
@@ -28,7 +28,7 @@ class DesktopEntryManager {
   static Future<DesktopEntryManager> create() async {
     final desktopEntries = <DesktopEntry>[];
 
-    for (final dir in _lookupDirs) {
+    for (final dir in _lookupDirs.where((e) => e.existsSync())) {
       final dirEntries = dir.listSync();
       for (final entry in dirEntries) {
         if (entry is File && p.extension(entry.path) == ".desktop") {
@@ -50,9 +50,8 @@ class DesktopEntryManager {
     return DesktopEntryManager._(desktopEntries);
   }
 
-  // ignore: non_constant_identifier_names, unused_element
-  DesktopEntry? __get__(String name) {
-    final index = _binarySearchBy(_sortedDesktopEntries, (e) => e.fields.name, (a, b) => a.compareTo(b), name);
+  DesktopEntry? get_(String name) {
+    final index = _binarySearchBy(_sortedDesktopEntries, (e) => e.filename, (a, b) => a.compareTo(b), name);
     if (index == -1) {
       return null;
     }
