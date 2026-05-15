@@ -6,6 +6,17 @@ publish_to: none
 environment:
   sdk: ^3.10.0
 
+desktop_entry:
+  path: packages/desktop_entry
+freedesktop_file_parser:
+  path: packages/freedesktop_file_parser
+mime_apps:
+  path: packages/mime_apps
+mime_db:
+  path: packages/mime_db
+result:
+  path: packages/result
+
 workspace:
   - pkgs/result
   - pkgs/desktop_entry
