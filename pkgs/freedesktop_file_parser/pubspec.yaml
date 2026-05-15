@@ -10,6 +10,7 @@ resolution: workspace
 
 dependencies:
   result:
+    path: ../result
 
 dev_dependencies:
   lints: ^6.0.0
