@@ -23,6 +23,8 @@ dependencies:
     path: ../result
   freedesktop_file_parser:
     path: ../freedesktop_file_parser
+  desktop_entry:
+    path: ../desktop_entry
 
 dev_dependencies:
   lints: ^6.0.0

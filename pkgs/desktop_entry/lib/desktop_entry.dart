@@ -58,6 +58,16 @@ class DesktopEntryManager {
     }
     return _sortedDesktopEntries[index];
   }
+
+  List<String> findByMimeType(String mimeType) {
+    final result = <String>[];
+    for (final entry in _sortedDesktopEntries) {
+      if (entry.fields.mimeType.contains(mimeType)) {
+        result.add(entry.filename);
+      }
+    }
+    return result;
+  }
 }
 
 

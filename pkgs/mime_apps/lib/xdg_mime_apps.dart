@@ -2,6 +2,7 @@ library;
 
 import 'dart:io';
 import 'package:dartx/dartx_io.dart';
+import 'package:desktop_entry/desktop_entry.dart';
 import 'package:freedesktop_file_parser/parser.dart' as xdg_parser;
 import 'package:path/path.dart' as path;
 import 'package:result/result.dart';
@@ -11,7 +12,7 @@ import 'package:xdg_mime_apps/src/type.dart';
 abstract final class XdgMimeApps {
   static Mimelist? __mimelist;
   static Mimelist get _mimelist {
-    if (__mimelist != null) __mimelist;
+    if (__mimelist != null) return __mimelist!;
     __mimelist = _parseMimelist();
     return __mimelist!;
   }
@@ -32,13 +33,35 @@ abstract final class XdgMimeApps {
     return mimelist;
   }
 
-  static List<String> list(String mime) {
-    // TODO we need to check the application directory for more mimeapp files
-    return _mimelist.added[mime]?.toList() ?? [];
+  static List<String> list(String mime, {DesktopEntryManager? desktopEntries}) {
+    final added = _mimelist.added[mime];
+    final removed = _mimelist.removed[mime];
+
+    if (added != null) {
+      final result = _subtract(added, removed);
+      if (result.isNotEmpty) return result.toList();
+    }
+
+    if (desktopEntries != null) {
+      final desktopMatches = desktopEntries.findByMimeType(mime);
+      if (removed != null) {
+        final removedSet = removed;
+        desktopMatches.removeWhere((e) => removedSet.contains(e));
+      }
+      if (desktopMatches.isNotEmpty) return desktopMatches;
+    }
+
+    return [];
   }
 
-  static List<String> defaults(String mime) =>
-      _mimelist.defaults[mime]?.toList(growable: false) ?? [];
+  static List<String> defaults(String mime, {DesktopEntryManager? desktopEntries}) {
+    final def = _mimelist.defaults[mime];
+    if (def != null && def.isNotEmpty) {
+      return def.toList(growable: false);
+    }
+
+    return list(mime, desktopEntries: desktopEntries);
+  }
 
   static final List<Directory> _lookupConfigDirs = [
     xdg_dir.configHome,
@@ -77,7 +100,8 @@ void _parseMimeappList(File mimeFile, Mimelist list) {
       }
 
       if (list.removed.containsKey(mime)) {
-        value = value.substract(list.removed[mime]!);
+        final removedSet = list.removed[mime]!;
+        value.removeWhere((e) => removedSet.contains(e));
       }
       if (value.isEmpty) {
         continue;
@@ -132,14 +156,13 @@ void _parseMimeappList(File mimeFile, Mimelist list) {
   }
 }
 
-extension<T> on Set<T> {
-  Set<T> substract(Set<T> other) {
-    final result = <T>{};
-    for (final e in this) {
-      if (!other.contains(e)) {
-        result.add(e);
-      }
+Set<String> _subtract(Set<String> a, Set<String>? b) {
+  if (b == null || b.isEmpty) return a.toList(growable: false).toSet();
+  final result = <String>{};
+  for (final e in a) {
+    if (!b.contains(e)) {
+      result.add(e);
     }
-    return result;
   }
+  return result;
 }

@@ -8,7 +8,7 @@ void main() async {
   final mimedb = await SharedMimeInfo.open();
   final dem = await DesktopEntryManager.create();
 
-  final filenames = ["index.html", "index.xhtml", "book.pdf", "image.png"];
+  final filenames = ["index.html", "index.xhtml", "book.pdf", "image.png", "video.mkv"];
 
   for (final filename in filenames) {
     final mime = mimedb.getMimeType(filename);
@@ -18,12 +18,12 @@ void main() async {
       continue;
     }
     print("Mime found for $filename is $mime");
-    print("Application list for $mime: ${XdgMimeApps.list(mime).map((e) {
+    print("Application list for $mime: ${XdgMimeApps.list(mime, desktopEntries: dem).map((e) {
       final entry = dem.get_(e);
       return "$e ${entry?.fields.name} ${entry?.fields.exec}";
     })}");
     String mimeDefaults = mime;
-    List<String> defaults = XdgMimeApps.defaults(mimeDefaults);
+    List<String> defaults = XdgMimeApps.defaults(mimeDefaults, desktopEntries: dem);
     if (defaults.isEmpty) {
       for (final ancester in mimedb.getAncesters(mime)) {
         defaults = XdgMimeApps.defaults(ancester);
