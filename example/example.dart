@@ -20,7 +20,7 @@ void main() async {
     print("Mime found for $filename is $mime");
     print("Application list for $mime: ${XdgMimeApps.list(mime).map((e) {
       final entry = dem.get_(e);
-      return "$e ${entry?.fields.name}";
+      return "$e ${entry?.fields.name} ${entry?.fields.exec}";
     })}");
     String mimeDefaults = mime;
     List<String> defaults = XdgMimeApps.defaults(mimeDefaults);

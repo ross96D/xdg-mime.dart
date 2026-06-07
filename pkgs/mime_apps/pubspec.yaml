@@ -10,6 +10,10 @@ resolution: workspace
 
 # Add regular dependencies here.
 dependencies:
+  result:
+    path: ../result
+  freedesktop_file_parser:
+    path: ../freedesktop_file_parser
   path: ^1.9.0
   dartx: ^1.2.0
 

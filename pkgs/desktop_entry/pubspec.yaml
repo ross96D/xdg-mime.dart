@@ -11,8 +11,11 @@ resolution: workspace
 dependencies:
   crypto: ^3.0.7
   dartx: ^1.2.0
+  freedesktop_file_parser:
+    path: ../freedesktop_file_parser
   path: ^1.9.1
-
+  result:
+    path: ../result
   xdg_dir:
     version: ^1.0.1
     git:

@@ -10,6 +10,7 @@ import 'package:path/path.dart' as p;
 import 'src/types.dart';
 
 export 'src/types.dart';
+export 'src/exec.dart';
 
 class DesktopEntryManager {
   final List<DesktopEntry> _sortedDesktopEntries;
